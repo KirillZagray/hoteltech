@@ -1,0 +1,208 @@
+// HotelTech - White-label платформа автоматизации гостиничного бизнеса
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// ОТЕЛИ (Мультитенантность)
+// ============================================================================
+
+model Hotel {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  address   String?
+  phone     String?
+  email     String?
+  config    String?  // JSON: white-label конфигурация (логотип, цвета, модули)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  rooms      Room[]
+  bookings   Booking[]
+  employees  Employee[]
+  services   Service[]
+  orders     Order[]
+}
+
+// ============================================================================
+// НОМЕРА
+// ============================================================================
+
+model Room {
+  id         String   @id @default(cuid())
+  hotelId    String
+  roomNumber String
+  roomType   String   // standard, deluxe, suite, presidential
+  price      Float
+  capacity   Int      @default(2)
+  amenities  String?  // JSON: удобства (wifi, tv, minibar, etc.)
+  status     String   @default("available") // available, occupied, cleaning, maintenance
+  images     String?  // JSON: массив URL изображений
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  hotel    Hotel     @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  bookings Booking[]
+
+  @@unique([hotelId, roomNumber])
+}
+
+// ============================================================================
+// БРОНИРОВАНИЯ
+// ============================================================================
+
+model Booking {
+  id            String   @id @default(cuid())
+  hotelId       String
+  roomId        String
+  checkIn       DateTime
+  checkOut      DateTime
+  guestName     String
+  guestPhone    String
+  guestEmail    String?
+  guestCount    Int      @default(1)
+  totalPrice    Float
+  status        String   @default("pending") // pending, confirmed, checked_in, checked_out, cancelled
+  specialRequests String?
+  paymentStatus String   @default("pending") // pending, paid, refunded
+  paymentId     String?  // ID платежа от платёжной системы
+  confirmationCode String? @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  hotel   Hotel    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  room    Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  orders  Order[]
+}
+
+// ============================================================================
+// УСЛУГИ
+// ============================================================================
+
+model Service {
+  id          String   @id @default(cuid())
+  hotelId     String
+  name        String
+  description String?
+  category    String   // room_service, spa, cleaning, fitness, transfer, breakfast
+  price       Float    @default(0)
+  isActive    Boolean  @default(true)
+  metadata    String?  // JSON: дополнительная информация
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  hotel  Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  orders Order[]
+}
+
+// ============================================================================
+// ЗАКАЗЫ УСЛУГ
+// ============================================================================
+
+model Order {
+  id           String   @id @default(cuid())
+  hotelId      String
+  bookingId    String?
+  serviceId    String
+  items        String   // JSON: [{name, quantity, price}]
+  total        Float
+  status       String   @default("pending") // pending, confirmed, in_progress, completed, cancelled
+  notes        String?
+  roomNumber   String?  // Для заказов без бронирования
+  guestName    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  hotel   Hotel   @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================================
+// ПЕРСОНАЛ
+// ============================================================================
+
+model Employee {
+  id         String   @id @default(cuid())
+  hotelId    String
+  name       String
+  position   String   // admin, manager, receptionist, cleaner, chef, spa_therapist
+  phone      String?
+  email      String?
+  hireDate   DateTime?
+  salary     Float?
+  status     String   @default("active") // active, on_vacation, on_sick_leave, fired
+  avatar     String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  hotel        Hotel         @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  timeEntries  TimeEntry[]
+}
+
+// ============================================================================
+// ТАБЕЛЬ УЧЁТА ВРЕМЕНИ
+// ============================================================================
+
+model TimeEntry {
+  id           String   @id @default(cuid())
+  employeeId   String
+  checkIn      DateTime
+  checkOut     DateTime?
+  hoursWorked  Float?
+  status       String   @default("worked") // worked, overtime, sick, vacation, day_off
+  notes        String?
+  photoUrl     String?  // Фото при отметке
+  location     String?  // GPS координаты
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+}
+
+// ============================================================================
+// ПОЛЬЗОВАТЕЛИ СИСТЕМЫ (Администраторы)
+// ============================================================================
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("admin") // super_admin, admin, manager
+  hotelId   String?  // NULL для super_admin
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ============================================================================
+// ЛОГИРОВАНИЕ ДЕЙСТВИЙ
+// ============================================================================
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  hotelId   String?
+  userId    String?
+  action    String   // create, update, delete, login, etc.
+  entity    String   // booking, room, employee, etc.
+  entityId  String?
+  details   String?  // JSON: детали действия
+  ip        String?
+  createdAt DateTime @default(now())
+}
