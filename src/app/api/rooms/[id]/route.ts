@@ -40,6 +40,7 @@ export async function PUT(
         price: parseFloat(body.price),
         capacity: parseInt(body.capacity) || 2,
         amenities: JSON.stringify(body.amenities || []),
+        images: body.images !== undefined ? JSON.stringify(body.images || []) : undefined,
         status: body.status,
       },
     });

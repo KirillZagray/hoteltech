@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
         price: parseFloat(body.price),
         capacity: parseInt(body.capacity) || 2,
         amenities: JSON.stringify(body.amenities || []),
+        images: JSON.stringify(body.images || []),
         status: body.status || 'available',
       },
     });

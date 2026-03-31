@@ -16,13 +16,15 @@ import {
   Menu,
   X,
   RefreshCw,
-  Building2
+  Building2,
+  Code
 } from 'lucide-react';
 import { Dashboard } from '@/components/hotel/Dashboard';
 import { RoomsTab } from '@/components/hotel/RoomsTab';
 import { BookingsTab } from '@/components/hotel/BookingsTab';
 import { OrdersTab } from '@/components/hotel/OrdersTab';
 import { EmployeesTab } from '@/components/hotel/EmployeesTab';
+import { ApiDocsModal } from '@/components/hotel/ApiDocsModal';
 import { api } from '@/lib/use-hotel-data';
 import { 
   DashboardStats, 
@@ -39,6 +41,7 @@ export default function HotelTechDashboard() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [apiDocsOpen, setApiDocsOpen] = useState(false);
   
   // Data states
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -137,6 +140,15 @@ export default function HotelTechDashboard() {
             {/* Actions */}
             <div className="flex items-center gap-2">
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setApiDocsOpen(true)}
+                className="hidden sm:flex gap-2"
+              >
+                <Code className="h-4 w-4" />
+                API Документация
+              </Button>
+              <Button
                 variant="ghost"
                 size="icon"
                 onClick={handleRefresh}
@@ -177,6 +189,16 @@ export default function HotelTechDashboard() {
                           {item.label}
                         </Button>
                       ))}
+                      <div className="border-t my-2 pt-2">
+                        <Button
+                          variant="ghost"
+                          onClick={() => setApiDocsOpen(true)}
+                          className="justify-start gap-3 w-full"
+                        >
+                          <Code className="h-5 w-5" />
+                          API Документация
+                        </Button>
+                      </div>
                     </nav>
                   </div>
                 </SheetContent>
@@ -258,6 +280,9 @@ export default function HotelTechDashboard() {
           </div>
         </div>
       </footer>
+
+      {/* API Documentation Modal */}
+      <ApiDocsModal open={apiDocsOpen} onOpenChange={setApiDocsOpen} />
     </div>
   );
 }

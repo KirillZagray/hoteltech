@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +41,11 @@ import {
   Users,
   Star,
   MoreVertical,
-  Check
+  Check,
+  Upload,
+  X,
+  Image as ImageIcon,
+  Camera
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -67,6 +71,8 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [formData, setFormData] = useState({
     roomNumber: '',
     roomType: 'standard',
@@ -75,6 +81,9 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
     amenities: '',
     status: 'available',
   });
+  const [roomImages, setRoomImages] = useState<string[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const resetForm = () => {
     setFormData({
@@ -85,6 +94,7 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
       amenities: '',
       status: 'available',
     });
+    setRoomImages([]);
     setEditingRoom(null);
   };
 
@@ -98,12 +108,57 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
       amenities: room.amenities ? JSON.parse(room.amenities).join(', ') : '',
       status: room.status,
     });
+    // Parse images from room
+    try {
+      const images = room.images ? JSON.parse(room.images) : [];
+      setRoomImages(Array.isArray(images) ? images : []);
+    } catch {
+      setRoomImages([]);
+    }
     setDialogOpen(true);
   };
 
   const openCreateDialog = () => {
     resetForm();
     setDialogOpen(true);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const formDataObj = new FormData();
+        formDataObj.append('image', file);
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formDataObj,
+        });
+
+        const result = await response.json();
+        if (result.success && result.data.url) {
+          setRoomImages(prev => [...prev, result.data.url]);
+          toast.success('Изображение загружено');
+        } else {
+          toast.error(result.error || 'Ошибка загрузки');
+        }
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Ошибка загрузки изображения');
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setRoomImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
@@ -120,6 +175,7 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
         price: parseFloat(formData.price),
         capacity: parseInt(formData.capacity),
         amenities: formData.amenities.split(',').map(a => a.trim()).filter(Boolean),
+        images: roomImages,
         status: formData.status,
       };
 
@@ -160,6 +216,16 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
       onRefresh();
     } catch (error) {
       console.error('Error updating status:', error);
+    }
+  };
+
+  // Get room images for display
+  const getRoomImages = (room: Room): string[] => {
+    try {
+      const images = room.images ? JSON.parse(room.images) : [];
+      return Array.isArray(images) ? images : [];
+    } catch {
+      return [];
     }
   };
 
@@ -236,6 +302,7 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead>Номер</TableHead>
+                  <TableHead>Фото</TableHead>
                   <TableHead>Тип</TableHead>
                   <TableHead>Вместимость</TableHead>
                   <TableHead>Цена/сутки</TableHead>
@@ -246,76 +313,110 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
               <TableBody>
                 {filteredRooms.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       Номера не найдены
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredRooms.map((room) => (
-                    <TableRow key={room.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted">
-                            <Bed className="h-4 w-4" />
+                  filteredRooms.map((room) => {
+                    const images = getRoomImages(room);
+                    return (
+                      <TableRow key={room.id}>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-muted">
+                              <Bed className="h-4 w-4" />
+                            </div>
+                            <span className="font-medium">{room.roomNumber}</span>
                           </div>
-                          <span className="font-medium">{room.roomNumber}</span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">
-                          {ROOM_TYPES[room.roomType as keyof typeof ROOM_TYPES]?.label || room.roomType}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Users className="h-4 w-4 text-muted-foreground" />
-                          {room.capacity} гостей
-                        </div>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        {formatCurrency(room.price)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={ROOM_STATUS[room.status as keyof typeof ROOM_STATUS]?.color}>
-                          {ROOM_STATUS[room.status as keyof typeof ROOM_STATUS]?.label || room.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => openEditDialog(room)}>
-                              <Pencil className="h-4 w-4 mr-2" />
-                              Редактировать
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleStatusChange(room.id, 'available')}>
-                              <Check className="h-4 w-4 mr-2 text-emerald-600" />
-                              Свободен
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStatusChange(room.id, 'cleaning')}>
-                              Свободен после уборки
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => handleStatusChange(room.id, 'maintenance')}>
-                              На ремонте
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem 
-                              onClick={() => handleDelete(room.id)}
-                              className="text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Удалить
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                        </TableCell>
+                        <TableCell>
+                          {images.length > 0 ? (
+                            <div className="flex -space-x-2">
+                              {images.slice(0, 3).map((img, idx) => (
+                                <div
+                                  key={idx}
+                                  className="w-10 h-10 rounded-lg overflow-hidden border-2 border-white cursor-pointer hover:z-10 transition-transform hover:scale-110"
+                                  onClick={() => {
+                                    setPreviewImage(img);
+                                    setPreviewOpen(true);
+                                  }}
+                                >
+                                  <img 
+                                    src={img} 
+                                    alt={`Фото ${idx + 1}`} 
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ))}
+                              {images.length > 3 && (
+                                <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center border-2 border-white text-xs font-medium">
+                                  +{images.length - 3}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center">
+                              <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                            </div>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="secondary">
+                            {ROOM_TYPES[room.roomType as keyof typeof ROOM_TYPES]?.label || room.roomType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                            {room.capacity} гостей
+                          </div>
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {formatCurrency(room.price)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className={ROOM_STATUS[room.status as keyof typeof ROOM_STATUS]?.color}>
+                            {ROOM_STATUS[room.status as keyof typeof ROOM_STATUS]?.label || room.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreVertical className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => openEditDialog(room)}>
+                                <Pencil className="h-4 w-4 mr-2" />
+                                Редактировать
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleStatusChange(room.id, 'available')}>
+                                <Check className="h-4 w-4 mr-2 text-emerald-600" />
+                                Свободен
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(room.id, 'cleaning')}>
+                                Свободен после уборки
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleStatusChange(room.id, 'maintenance')}>
+                                На ремонте
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => handleDelete(room.id)}
+                                className="text-red-600 focus:text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Удалить
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
@@ -325,7 +426,7 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingRoom ? 'Редактировать номер' : 'Добавить номер'}
@@ -403,6 +504,96 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
                 rows={2}
               />
             </div>
+
+            {/* Image Upload Section */}
+            <div className="grid gap-2">
+              <Label>Фотографии номера</Label>
+              
+              {/* Upload Button */}
+              <div className="flex items-center gap-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageUpload}
+                  accept="image/jpeg,image/png,image/webp"
+                  multiple
+                  className="hidden"
+                />
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 mr-2 border-2 border-current border-t-transparent rounded-full" />
+                      Загрузка...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Загрузить фото
+                    </>
+                  )}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  JPG, PNG, WebP до 5MB
+                </span>
+              </div>
+
+              {/* Image Gallery */}
+              {roomImages.length > 0 && (
+                <div className="grid grid-cols-4 gap-3 mt-2">
+                  {roomImages.map((img, idx) => (
+                    <div 
+                      key={idx} 
+                      className="relative aspect-square rounded-lg overflow-hidden border group"
+                    >
+                      <img 
+                        src={img} 
+                        alt={`Фото ${idx + 1}`} 
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          className="h-7 w-7"
+                          onClick={() => {
+                            setPreviewImage(img);
+                            setPreviewOpen(true);
+                          }}
+                        >
+                          <Camera className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          className="h-7 w-7"
+                          onClick={() => handleRemoveImage(idx)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {idx === 0 && (
+                        <div className="absolute top-1 left-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded">
+                          Главное
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {roomImages.length === 0 && (
+                <div className="border-2 border-dashed rounded-lg p-6 text-center text-muted-foreground">
+                  <ImageIcon className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">Нет загруженных изображений</p>
+                  <p className="text-xs mt-1">Первое загруженное фото станет главным</p>
+                </div>
+              )}
+            </div>
             
             <div className="grid gap-2">
               <Label htmlFor="status">Статус</Label>
@@ -430,6 +621,27 @@ export function RoomsTab({ rooms, loading, onRefresh }: RoomsTabProps) {
               {saving ? 'Сохранение...' : (editingRoom ? 'Сохранить' : 'Создать')}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Image Preview Dialog */}
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-w-4xl p-0 overflow-hidden bg-black/90 border-none">
+          {previewImage && (
+            <img 
+              src={previewImage} 
+              alt="Предпросмотр" 
+              className="w-full h-auto max-h-[80vh] object-contain"
+            />
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute top-2 right-2 text-white hover:bg-white/20"
+            onClick={() => setPreviewOpen(false)}
+          >
+            <X className="h-5 w-5" />
+          </Button>
         </DialogContent>
       </Dialog>
     </div>
